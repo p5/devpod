@@ -1,6 +1,6 @@
 import {
   Box,
-  Button,
+  Button, Checkbox,
   FormControl,
   FormErrorMessage,
   FormHelperText,
@@ -12,6 +12,7 @@ import {
   Input,
   Link,
   SimpleGrid,
+  Switch,
   Text,
   Tooltip,
   useColorModeValue,
@@ -406,8 +407,24 @@ export function CreateWorkspace() {
                   </FormHelperText>
                 )}
               </FormControl>
-              {/* placholder box */}
-              <Box width={"full"} />
+
+              <FormControl>
+                <FormLabel>Additional Options</FormLabel>
+                <Checkbox
+                    {...register(FieldName.USE_GIT_WORKTREE)}
+                  >
+                    Enable Git Worktree
+                </Checkbox>
+                <FormHelperText>
+                    Additional options to configure the workspace.  For more information, see <Link
+                      fontWeight="bold"
+                      target="_blank"
+                      // Placeholder link
+                      href="https://devpod.sh/docs/what-is-devpod">
+                    the documentation
+                  </Link>
+                </FormHelperText>
+              </FormControl>
             </HStack>
           </VStack>
 
