@@ -32,7 +32,7 @@ const ContainerActivityFile = "/tmp/devpod.activity"
 
 const WorkspaceDevContainerResult = "result.json"
 
-const defaultAgentDownloadURL = "https://github.com/loft-sh/devpod/releases/download/"
+const defaultAgentDownloadURL = "https://github.com/p5/devpod/releases/download/"
 
 func DefaultAgentDownloadURL() string {
 	devPodAgentURL := os.Getenv("DEVPOD_AGENT_URL")
