@@ -105,7 +105,7 @@ func (s *workspaceClient) RefreshOptions(ctx context.Context, userOptionsRaw []s
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	userOptions, err := provider.ParseOptions(s.devPodConfig, s.config, userOptionsRaw)
+	userOptions, err := provider.ParseOptions(userOptionsRaw)
 	if err != nil {
 		return perrors.Wrap(err, "parse options")
 	}
@@ -158,6 +158,19 @@ func (s *workspaceClient) AgentInfo(cliOptions provider.CLIOptions) (string, *pr
 		CLIOptions: cliOptions,
 		Agent:      options.ResolveAgentConfig(s.devPodConfig, s.config, s.workspace, s.machine),
 		Options:    s.devPodConfig.ProviderOptions(s.Provider()),
+	}
+
+	// we don't send any provider options if proxy because these could contain
+	// sensitive information and we don't want to allow privileged containers that
+	// have access to the host to save these.
+	if cliOptions.Proxy || cliOptions.DisableDaemon {
+		agentInfo.Options = map[string]config.OptionValue{}
+		agentInfo.Workspace = provider.CloneWorkspace(agentInfo.Workspace)
+		agentInfo.Workspace.Provider.Options = map[string]config.OptionValue{}
+		if agentInfo.Machine != nil {
+			agentInfo.Machine = provider.CloneMachine(agentInfo.Machine)
+			agentInfo.Machine.Provider.Options = map[string]config.OptionValue{}
+		}
 	}
 
 	// marshal config

@@ -49,6 +49,18 @@ func Single(file string, createCommand CreateCommand) error {
 		return err
 	}
 
+	// pipe streams into file.streams
+	f, err := os.Create(file + ".streams")
+	if err != nil {
+		return err
+	}
+	if cmd.Stderr == nil {
+		cmd.Stderr = f
+	}
+	if cmd.Stdout == nil {
+		cmd.Stdout = f
+	}
+
 	// start process
 	err = cmd.Start()
 	if err != nil {

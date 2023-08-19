@@ -101,6 +101,8 @@ func (r *Runner) runDockerCompose(ctx context.Context, parsedConfig *config.Subs
 		containerDetails, err = r.startContainer(ctx, parsedConfig, project, composeHelper, composeGlobalArgs, containerDetails, options)
 		if err != nil {
 			return nil, errors.Wrap(err, "start container")
+		} else if containerDetails == nil {
+			return nil, fmt.Errorf("couldn't find container after start")
 		}
 	}
 
@@ -240,7 +242,7 @@ func (r *Runner) startContainer(
 	}
 
 	if container == nil || !didRestoreFromPersistedShare {
-		overrideBuildImageName, overrideComposeBuildFilePath, imageMetadata, metadataLabel, err := r.buildAndExtendDockerCompose(parsedConfig, project, composeHelper, &composeService, composeGlobalArgs)
+		overrideBuildImageName, overrideComposeBuildFilePath, imageMetadata, metadataLabel, err := r.buildAndExtendDockerCompose(ctx, parsedConfig, project, composeHelper, &composeService, composeGlobalArgs)
 		if err != nil {
 			return nil, errors.Wrap(err, "build and extend docker-compose")
 		}
@@ -254,7 +256,7 @@ func (r *Runner) startContainer(
 			currentImageName = originalImageName
 		}
 
-		imageDetails, err := r.Driver.InspectImage(context.TODO(), currentImageName)
+		imageDetails, err := r.Driver.InspectImage(ctx, currentImageName)
 		if err != nil {
 			return nil, errors.Wrap(err, "inspect image")
 		}
@@ -267,7 +269,7 @@ func (r *Runner) startContainer(
 		additionalLabels := map[string]string{
 			metadata.ImageMetadataLabel: metadataLabel,
 		}
-		overrideComposeUpFilePath, err := r.extendedDockerComposeUp(ctx, parsedConfig, mergedConfig, composeHelper, &composeService, originalImageName, overrideBuildImageName, imageDetails, additionalLabels)
+		overrideComposeUpFilePath, err := r.extendedDockerComposeUp(parsedConfig, mergedConfig, composeHelper, &composeService, originalImageName, overrideBuildImageName, imageDetails, additionalLabels)
 		if err != nil {
 			return nil, errors.Wrap(err, "extend docker-compose up")
 		}
@@ -280,11 +282,11 @@ func (r *Runner) startContainer(
 	if container != nil && options.Recreate {
 		r.Log.Debugf("Deleting dev container %s due to --recreate", container.ID)
 
-		if err := r.Driver.StopDevContainer(context.TODO(), container.ID); err != nil {
+		if err := r.Driver.StopDevContainer(ctx, container.ID); err != nil {
 			return nil, errors.Wrap(err, "stop dev container")
 		}
 
-		if err := r.Driver.DeleteDevContainer(context.TODO(), container.ID, false); err != nil {
+		if err := r.Driver.DeleteDevContainer(ctx, container.ID, false); err != nil {
 			return nil, errors.Wrap(err, "delete dev container")
 		}
 	}
@@ -296,18 +298,20 @@ func (r *Runner) startContainer(
 		upArgs = append(upArgs, "--no-recreate")
 	}
 
-	upArgs = append(upArgs, composeService.Name)
-	for _, service := range parsedConfig.Config.RunServices {
-		if service == composeService.Name {
-			continue
+	if len(parsedConfig.Config.RunServices) > 0 {
+		upArgs = append(upArgs, composeService.Name)
+		for _, service := range parsedConfig.Config.RunServices {
+			if service == composeService.Name {
+				continue
+			}
+			upArgs = append(upArgs, service)
 		}
-		upArgs = append(upArgs, service)
 	}
 
 	// start compose
 	writer := r.Log.Writer(logrus.InfoLevel, false)
 	defer writer.Close()
-	err = composeHelper.Run(context.TODO(), upArgs, nil, writer, writer)
+	err = composeHelper.Run(ctx, upArgs, nil, writer, writer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "docker-compose run")
 	}
@@ -322,7 +326,7 @@ func (r *Runner) startContainer(
 }
 
 // This extends the build information for docker compose containers
-func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedConfig, project *composetypes.Project, composeHelper *compose.ComposeHelper, composeService *composetypes.ServiceConfig, globalArgs []string) (string, string, *config.ImageMetadataConfig, string, error) {
+func (r *Runner) buildAndExtendDockerCompose(ctx context.Context, parsedConfig *config.SubstitutedConfig, project *composetypes.Project, composeHelper *compose.ComposeHelper, composeService *composetypes.ServiceConfig, globalArgs []string) (string, string, *config.ImageMetadataConfig, string, error) {
 	var dockerFilePath, dockerfileContents, dockerComposeFilePath string
 	var imageBuildInfo *config.ImageBuildInfo
 	var err error
@@ -369,7 +373,7 @@ func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedCon
 		}
 	}
 
-	extendImageBuildInfo, err := feature.GetExtendedBuildInfo(r.SubstitutionContext, imageBuildInfo.Metadata, imageBuildInfo.User, buildTarget, parsedConfig, r.Log)
+	extendImageBuildInfo, err := feature.GetExtendedBuildInfo(r.SubstitutionContext, imageBuildInfo.Metadata, imageBuildInfo.User, buildTarget, parsedConfig, false, r.Log)
 	if err != nil {
 		return "", "", nil, "", err
 	}
@@ -379,10 +383,20 @@ func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedCon
 			dockerfileContents = fmt.Sprintf("FROM %s AS %s\n", composeService.Image, buildTarget)
 		}
 
+		if _, err := r.buildFeatureContentImage(ctx, extendImageBuildInfo.FeaturesBuildInfo); err != nil {
+			return "", "", nil, "", errors.Wrap(err, "build feature content image")
+		}
+
 		extendedDockerfilePath, extendedDockerfileContent := r.extendedDockerfile(
 			extendImageBuildInfo.FeaturesBuildInfo,
 			dockerFilePath,
 			dockerfileContents,
+		)
+
+		r.Log.Debugf(
+			"Creating extended Dockerfile %s with content: \n %s",
+			extendedDockerfilePath,
+			extendedDockerfileContent,
 		)
 
 		defer os.RemoveAll(filepath.Dir(extendedDockerfilePath))
@@ -391,7 +405,7 @@ func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedCon
 			return "", "", nil, "", errors.Wrap(err, "write Dockerfile with features")
 		}
 
-		dockerComposeFilePath, err = extendedDockerComposeBuild(
+		dockerComposeFilePath, err = r.extendedDockerComposeBuild(
 			composeService,
 			extendedDockerfilePath,
 			extendImageBuildInfo.FeaturesBuildInfo,
@@ -411,18 +425,20 @@ func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedCon
 		buildArgs = append(buildArgs, "--pull")
 	}
 
-	buildArgs = append(buildArgs, composeService.Name)
-	for _, service := range parsedConfig.Config.RunServices {
-		if service == composeService.Name {
-			continue
+	if len(parsedConfig.Config.RunServices) > 0 {
+		buildArgs = append(buildArgs, composeService.Name)
+		for _, service := range parsedConfig.Config.RunServices {
+			if service == composeService.Name {
+				continue
+			}
+			buildArgs = append(buildArgs, service)
 		}
-		buildArgs = append(buildArgs, service)
 	}
 
 	// build image
 	writer := r.Log.Writer(logrus.InfoLevel, false)
 	defer writer.Close()
-	err = composeHelper.Run(context.TODO(), buildArgs, nil, writer, writer)
+	err = composeHelper.Run(ctx, buildArgs, nil, writer, writer)
 	if err != nil {
 		return buildImageName, "", nil, "", err
 	}
@@ -433,6 +449,55 @@ func (r *Runner) buildAndExtendDockerCompose(parsedConfig *config.SubstitutedCon
 	}
 
 	return buildImageName, dockerComposeFilePath, imageMetadata, extendImageBuildInfo.MetadataLabel, nil
+}
+
+func (r *Runner) buildFeatureContentImage(ctx context.Context, featureBuildInfo *feature.BuildInfo) (string, error) {
+	helper, err := r.Driver.ComposeHelper()
+	if err != nil {
+		return "", err
+	}
+
+	tempFeatureContentImage := "dev_container_feature_content_temp"
+	tempFeatureDockerfilePath := filepath.Join(featureBuildInfo.FeaturesFolder, "Dockerfile.buildContent")
+	tempFeatureDockerfileContent := `
+FROM scratch
+COPY . /tmp/build-features/
+`
+
+	if err := os.WriteFile(
+		tempFeatureDockerfilePath,
+		[]byte(tempFeatureDockerfileContent),
+		0666,
+	); err != nil {
+		return "", err
+	}
+
+	writer := r.Log.Writer(logrus.InfoLevel, false)
+	defer writer.Close()
+
+	r.Log.Debugf(
+		"Building docker image %s, using context %s with Dockerfile: \n %s",
+		tempFeatureContentImage,
+		tempFeatureDockerfilePath,
+		tempFeatureDockerfileContent,
+	)
+
+	if err := helper.Docker.Run(
+		ctx,
+		[]string{
+			"build",
+			"-t", tempFeatureContentImage,
+			"-f", tempFeatureDockerfilePath,
+			featureBuildInfo.FeaturesFolder,
+		},
+		nil,
+		writer,
+		writer,
+	); err != nil {
+		return "", err
+	}
+
+	return tempFeatureContentImage, nil
 }
 
 func (r *Runner) extendedDockerfile(featureBuildInfo *feature.BuildInfo, dockerfilePath, dockerfileContent string) (string, string) {
@@ -457,7 +522,7 @@ func (r *Runner) extendedDockerfile(featureBuildInfo *feature.BuildInfo, dockerf
 	return finalDockerfilePath, finalDockerfileContent
 }
 
-func extendedDockerComposeBuild(composeService *composetypes.ServiceConfig, dockerFilePath string, featuresBuildInfo *feature.BuildInfo) (string, error) {
+func (r *Runner) extendedDockerComposeBuild(composeService *composetypes.ServiceConfig, dockerFilePath string, featuresBuildInfo *feature.BuildInfo) (string, error) {
 	service := &composetypes.ServiceConfig{
 		Name: composeService.Name,
 		Build: &composetypes.BuildConfig{
@@ -503,6 +568,13 @@ func extendedDockerComposeBuild(composeService *composetypes.ServiceConfig, dock
 	}
 
 	dockerComposePath := filepath.Join(dockerComposeFolder, fmt.Sprintf("%s-%d.yml", FeaturesBuildOverrideFilePrefix, time.Now().Second()))
+
+	r.Log.Debugf(
+		"Creating docker-compose build %s with content:\n %s",
+		dockerComposePath,
+		string(dockerComposeData),
+	)
+
 	err = os.WriteFile(dockerComposePath, dockerComposeData, 0666)
 	if err != nil {
 		return "", err
@@ -512,7 +584,6 @@ func extendedDockerComposeBuild(composeService *composetypes.ServiceConfig, dock
 }
 
 func (r *Runner) extendedDockerComposeUp(
-	ctx context.Context,
 	parsedConfig *config.SubstitutedConfig,
 	mergedConfig *config.MergedDevContainerConfig,
 	composeHelper *compose.ComposeHelper,
@@ -535,6 +606,13 @@ func (r *Runner) extendedDockerComposeUp(
 	}
 
 	dockerComposePath := filepath.Join(dockerComposeFolder, fmt.Sprintf("%s-%d.yml", FeaturesStartOverrideFilePrefix, time.Now().Second()))
+
+	r.Log.Debugf(
+		"Creating docker-compose up %s with content:\n %s",
+		dockerComposePath,
+		string(dockerComposeData),
+	)
+
 	err = os.WriteFile(dockerComposePath, dockerComposeData, 0666)
 	if err != nil {
 		return "", err

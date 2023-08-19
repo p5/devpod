@@ -4,12 +4,12 @@
 
 ## Development
 
-1. Install [NodeJS + yarn](https://nodejs.org/en/)
+1. Install [NodeJS](https://nodejs.org/en/) and [Yarn](https://yarnpkg.com/getting-started/install)
 2. Install [Rust](https://www.rust-lang.org/tools/install)
 3. Install [Go](https://go.dev/doc/install)
-4. Run `../hack/rebuild.sh`
-5. Install dependencies with `yarn`
-6. Run `yarn tauri dev`
+4. Run `./hack/rebuild.sh` from the root directory of the repo
+5. Install dependencies with `yarn` in the `desktop` directory
+6. Run `yarn tauri dev` in the `desktop` directory
 
 ### Build dependencies
 
@@ -45,3 +45,10 @@ Run `yarn types:check` to check for errors
 
 The apps version is determined by the one in `package.json`. Be careful not to add one in `tauri.conf.json` as it override the current one.
 You can upgrade the version manually or run `yarn version ...`
+
+## Build desktop app
+
+If your development environment is setup successfully and you're able to run `yarn desktop:dev` without problems, you also should be able to build the app locally by runnning `yarn desktop:build:dev`.
+Notice the `:dev` suffix, if you omit this it'll try to build with the updater enabled. This won't work on your machine as it requires sensitive information.
+
+The output of the command can be found in `desktop/src-tauri/target/release/bundle`.

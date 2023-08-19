@@ -10,11 +10,21 @@ import (
 	"github.com/loft-sh/devpod/pkg/config"
 )
 
-const WorkspaceConfigFile = "workspace.json"
+const (
+	WorkspaceConfigFile   = "workspace.json"
+	MachineConfigFile     = "machine.json"
+	ProInstanceConfigFile = "pro.json"
+	ProviderConfigFile    = "provider.json"
+)
 
-const MachineConfigFile = "machine.json"
+func GetProInstancesDir(context string) (string, error) {
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		return "", err
+	}
 
-const ProviderConfigFile = "provider.json"
+	return filepath.Join(configDir, "contexts", context, "pro"), nil
+}
 
 func GetMachinesDir(context string) (string, error) {
 	configDir, err := config.GetConfigDir()
@@ -96,6 +106,19 @@ func GetWorkspaceDir(context, workspaceID string) (string, error) {
 	return filepath.Join(configDir, "contexts", context, "workspaces", workspaceID), nil
 }
 
+func GetProInstanceDir(context, proInstanceID string) (string, error) {
+	if proInstanceID == "" {
+		return "", fmt.Errorf("pro instance ID id is empty")
+	}
+
+	configDir, err := config.GetConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(configDir, "contexts", context, "pro", proInstanceID), nil
+}
+
 func WorkspaceExists(context, workspaceID string) bool {
 	workspaceDir, err := GetWorkspaceDir(context, workspaceID)
 	if err != nil {
@@ -103,6 +126,16 @@ func WorkspaceExists(context, workspaceID string) bool {
 	}
 
 	_, err = os.Stat(workspaceDir)
+	return err == nil
+}
+
+func ProInstanceExists(context, proInstanceID string) bool {
+	proDir, err := GetProInstanceDir(context, proInstanceID)
+	if err != nil {
+		return false
+	}
+
+	_, err = os.Stat(proDir)
 	return err == nil
 }
 
@@ -124,6 +157,31 @@ func SaveProviderConfig(context string, provider *ProviderConfig) error {
 
 	providerConfigFile := filepath.Join(providerDir, ProviderConfigFile)
 	err = os.WriteFile(providerConfigFile, providerDirBytes, 0666)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func SaveProInstanceConfig(context string, proInstance *ProInstance) error {
+	providerDir, err := GetProInstanceDir(context, proInstance.ID)
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(providerDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	proInstanceBytes, err := json.Marshal(proInstance)
+	if err != nil {
+		return err
+	}
+
+	proInstanceConfigFile := filepath.Join(providerDir, ProInstanceConfigFile)
+	err = os.WriteFile(proInstanceConfigFile, proInstanceBytes, 0666)
 	if err != nil {
 		return err
 	}
@@ -233,6 +291,27 @@ func LoadMachineConfig(context, machineID string) (*Machine, error) {
 	machineConfig.Context = context
 	machineConfig.Origin = machineConfigFile
 	return machineConfig, nil
+}
+
+func LoadProInstanceConfig(context, proID string) (*ProInstance, error) {
+	proDir, err := GetProInstanceDir(context, proID)
+	if err != nil {
+		return nil, err
+	}
+
+	proConfigFile := filepath.Join(proDir, ProInstanceConfigFile)
+	proConfigBytes, err := os.ReadFile(proConfigFile)
+	if err != nil {
+		return nil, err
+	}
+
+	proInstanceConfig := &ProInstance{}
+	err = json.Unmarshal(proConfigBytes, proInstanceConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return proInstanceConfig, nil
 }
 
 func LoadWorkspaceConfig(context, workspaceID string) (*Workspace, error) {

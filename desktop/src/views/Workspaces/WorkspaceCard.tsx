@@ -3,6 +3,7 @@ import {
   Box,
   BoxProps,
   Button,
+  ButtonGroup,
   Card,
   CardFooter,
   CardHeader,
@@ -42,7 +43,7 @@ import { useCallback, useMemo, useState } from "react"
 import { HiClock, HiOutlineCode, HiShare } from "react-icons/hi"
 import { useNavigate } from "react-router"
 import { client } from "../../client"
-import { IconTag, Ripple } from "../../components"
+import { IconTag, Ripple, IDEIcon } from "../../components"
 import {
   TActionID,
   TActionObj,
@@ -51,12 +52,13 @@ import {
   useWorkspaceActions,
 } from "../../contexts"
 import { ArrowPath, Ellipsis, Pause, Play, Stack3D, Trash } from "../../icons"
-import { NoneSvg, NoWorkspaceImageSvg } from "../../images"
+import { NoWorkspaceImageSvg } from "../../images"
 import { exists, getIDEDisplayName, useHover } from "../../lib"
 import { QueryKeys } from "../../queryKeys"
 import { Routes } from "../../routes"
 import { TIDE, TWorkspace, TWorkspaceID } from "../../types"
 import { getIDEName, getSourceName } from "./helpers"
+import { useIDEs } from "../../useIDEs"
 
 type TWorkspaceCardProps = Readonly<{
   workspaceID: TWorkspaceID
@@ -68,11 +70,7 @@ export function WorkspaceCard({ workspaceID, onSelectionChange }: TWorkspaceCard
   const navigate = useNavigate()
   const toast = useToast()
   const settings = useSettings()
-  const idesQuery = useQuery({
-    queryKey: QueryKeys.IDES,
-    queryFn: async () => (await client.ides.listAll()).unwrap(),
-  })
-  const defaultIDE = idesQuery.data?.find((ide) => ide.default)
+  const { ides, defaultIDE } = useIDEs()
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure()
   const { isOpen: isRebuildOpen, onOpen: onRebuildOpen, onClose: onRebuildClose } = useDisclosure()
   const { isOpen: isStopOpen, onOpen: onStopOpen, onClose: onStopClose } = useDisclosure()
@@ -179,6 +177,7 @@ export function WorkspaceCard({ workspaceID, onSelectionChange }: TWorkspaceCard
     <>
       <Card key={id} direction="row" width="full" maxWidth="60rem" variant="outline" maxHeight="48">
         <Image
+          loading="lazy"
           objectFit="contain"
           width="18.75rem"
           height="12rem"
@@ -203,89 +202,93 @@ export function WorkspaceCard({ workspaceID, onSelectionChange }: TWorkspaceCard
 
           <CardFooter padding="none" paddingBottom={4}>
             <HStack spacing="2" width="full" justifyContent="end" paddingRight={"10px"}>
-              <Tooltip label={isOpenDisabled ? isOpenDisabledReason : undefined}>
-                <Button
-                  aria-label="Start workspace"
-                  variant="primary"
-                  leftIcon={<Icon as={HiOutlineCode} boxSize={5} />}
-                  isDisabled={isOpenDisabled}
-                  onClick={() => {
-                    const actionID = workspace.start({
-                      id,
-                      ideConfig: { name: ideName ?? ide?.name ?? null },
-                    })
-                    navigateToAction(actionID)
-                  }}
-                  isLoading={isLoading}>
-                  Open
-                </Button>
-              </Tooltip>
-              <Menu placement="top">
-                <MenuButton
-                  as={IconButton}
-                  aria-label="More actions"
-                  variant="ghost"
-                  colorScheme="gray"
-                  isDisabled={isLoading}
-                  icon={<Ellipsis transform={"rotate(90deg)"} boxSize={5} />}
-                />
-                <Portal>
-                  <MenuList>
-                    <Popover
-                      isOpen={isStartWithHovering || isPopoverHovering}
-                      placement="right"
-                      offset={[100, 0]}>
-                      <PopoverTrigger>
-                        <MenuItem ref={startWithRef} icon={<Play boxSize={4} />}>
-                          <HStack width="full" justifyContent="space-between">
-                            <Text>Start with</Text>
-                            <ChevronRightIcon boxSize={4} />
-                          </HStack>
-                        </MenuItem>
-                      </PopoverTrigger>
-                      <PopoverContent zIndex="popover" width="fit-content" ref={popoverContentRef}>
-                        {idesQuery.data?.map((ide) => (
-                          <MenuItem
-                            onClick={handleOpenWithIDEClicked(id, ide.name)}
-                            key={ide.name}
-                            value={ide.name!}
-                            icon={<Image width="6" height="6" src={ide.icon ?? NoneSvg} />}>
-                            {getIDEDisplayName(ide)}
+              <ButtonGroup isAttached variant="solid-outline">
+                <Tooltip label={isOpenDisabled ? isOpenDisabledReason : undefined}>
+                  <Button
+                    aria-label="Start workspace"
+                    leftIcon={<Icon as={HiOutlineCode} boxSize={5} />}
+                    isDisabled={isOpenDisabled}
+                    onClick={() => {
+                      const actionID = workspace.start({
+                        id,
+                        ideConfig: { name: ideName ?? ide?.name ?? null },
+                      })
+                      navigateToAction(actionID)
+                    }}
+                    isLoading={isLoading}>
+                    Open
+                  </Button>
+                </Tooltip>
+                <Menu placement="top">
+                  <MenuButton
+                    as={IconButton}
+                    aria-label="More actions"
+                    // variant="ghost"
+                    colorScheme="gray"
+                    isDisabled={isLoading}
+                    icon={<Ellipsis transform={"rotate(90deg)"} boxSize={5} />}
+                  />
+                  <Portal>
+                    <MenuList>
+                      <Popover
+                        isOpen={isStartWithHovering || isPopoverHovering}
+                        placement="right"
+                        offset={[100, 0]}>
+                        <PopoverTrigger>
+                          <MenuItem ref={startWithRef} icon={<Play boxSize={4} />}>
+                            <HStack width="full" justifyContent="space-between">
+                              <Text>Start with</Text>
+                              <ChevronRightIcon boxSize={4} />
+                            </HStack>
                           </MenuItem>
-                        ))}
-                      </PopoverContent>
-                    </Popover>
-                    <MenuItem
-                      icon={<Icon as={HiShare} boxSize={4} />}
-                      onClick={handleShareClicked(id)}>
-                      Share Configuration
-                    </MenuItem>
-                    <MenuItem icon={<ArrowPath boxSize={4} />} onClick={onRebuildOpen}>
-                      Rebuild
-                    </MenuItem>
-                    <MenuItem
-                      isDisabled={status !== "Running"}
-                      onClick={() => {
-                        if (status !== "Running") {
-                          onStopOpen()
+                        </PopoverTrigger>
+                        <PopoverContent
+                          zIndex="popover"
+                          width="fit-content"
+                          ref={popoverContentRef}>
+                          {ides?.map((ide) => (
+                            <MenuItem
+                              onClick={handleOpenWithIDEClicked(id, ide.name)}
+                              key={ide.name}
+                              value={ide.name!}
+                              icon={<IDEIcon ide={ide} width={6} height={6} size="sm" />}>
+                              {getIDEDisplayName(ide)}
+                            </MenuItem>
+                          ))}
+                        </PopoverContent>
+                      </Popover>
+                      <MenuItem
+                        icon={<Icon as={HiShare} boxSize={4} />}
+                        onClick={handleShareClicked(id)}>
+                        Share Configuration
+                      </MenuItem>
+                      <MenuItem icon={<ArrowPath boxSize={4} />} onClick={onRebuildOpen}>
+                        Rebuild
+                      </MenuItem>
+                      <MenuItem
+                        isDisabled={status !== "Running"}
+                        onClick={() => {
+                          if (status !== "Running") {
+                            onStopOpen()
 
-                          return
-                        }
+                            return
+                          }
 
-                        workspace.stop()
-                      }}
-                      icon={<Pause boxSize={4} />}>
-                      Stop
-                    </MenuItem>
-                    <MenuItem
-                      fontWeight="normal"
-                      icon={<Trash boxSize={4} />}
-                      onClick={() => onDeleteOpen()}>
-                      Delete
-                    </MenuItem>
-                  </MenuList>
-                </Portal>
-              </Menu>
+                          workspace.stop()
+                        }}
+                        icon={<Pause boxSize={4} />}>
+                        Stop
+                      </MenuItem>
+                      <MenuItem
+                        fontWeight="normal"
+                        icon={<Trash boxSize={4} />}
+                        onClick={() => onDeleteOpen()}>
+                        Delete
+                      </MenuItem>
+                    </MenuList>
+                  </Portal>
+                </Menu>
+              </ButtonGroup>
             </HStack>
           </CardFooter>
         </Stack>
@@ -459,7 +462,7 @@ function WorkspaceCardHeader({
             <Checkbox onChange={(e) => onSelectionChange(e.target.checked)} />
           )}
         </HStack>
-        {source !== null && (
+        {source && (
           <Text
             fontSize="sm"
             color="gray.500"
@@ -468,7 +471,7 @@ function WorkspaceCardHeader({
             overflow="hidden"
             whiteSpace="nowrap"
             textOverflow="ellipsis"
-            _hover={{ overflow: "visible" }}>
+            _hover={{ overflow: "visible", cursor: "text" }}>
             {getSourceName(source)}
           </Text>
         )}

@@ -22,12 +22,14 @@ var featureSafeIDRegex1 = regexp.MustCompile(`[^\w_]`)
 var featureSafeIDRegex2 = regexp.MustCompile(`^[\d_]+`)
 
 const FEATURE_BASE_DOCKERFILE = `
+#{nonBuildKitFeatureContentFallback}
+
 FROM $_DEV_CONTAINERS_BASE_IMAGE AS dev_containers_target_stage
 
 USER root
 
-COPY --from=dev_containers_feature_content_source . /tmp/build-features/
-RUN chmod -R 0700 /tmp/build-features
+COPY --from=dev_containers_feature_content_source #{featuresContentRoot} /tmp/build-features/
+RUN chmod -R 0755 /tmp/build-features && ls /tmp/build-features
 
 #{featureLayer}
 
@@ -52,7 +54,7 @@ type BuildInfo struct {
 	BuildKitContexts        map[string]string
 }
 
-func GetExtendedBuildInfo(substitutionContext *config.SubstitutionContext, baseImageMetadata *config.ImageMetadataConfig, user, target string, devContainerConfig *config.SubstitutedConfig, log log.Logger) (*ExtendedBuildInfo, error) {
+func GetExtendedBuildInfo(substitutionContext *config.SubstitutionContext, baseImageMetadata *config.ImageMetadataConfig, user, target string, devContainerConfig *config.SubstitutedConfig, buildKitSupported bool, log log.Logger) (*ExtendedBuildInfo, error) {
 	features, err := fetchFeatures(devContainerConfig.Config, log)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetch features")
@@ -76,7 +78,7 @@ func GetExtendedBuildInfo(substitutionContext *config.SubstitutionContext, baseI
 		}, nil
 	}
 
-	buildInfo, err := getFeatureBuildOptions(baseImageMetadata, user, target, features)
+	buildInfo, err := getFeatureBuildOptions(baseImageMetadata, user, target, features, buildKitSupported)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +91,7 @@ func GetExtendedBuildInfo(substitutionContext *config.SubstitutionContext, baseI
 	}, nil
 }
 
-func getFeatureBuildOptions(baseImageMetadata *config.ImageMetadataConfig, user, target string, features []*config.FeatureSet) (*BuildInfo, error) {
+func getFeatureBuildOptions(baseImageMetadata *config.ImageMetadataConfig, user, target string, features []*config.FeatureSet, buildKitSupported bool) (*BuildInfo, error) {
 	containerUser, remoteUser := findContainerUsers(baseImageMetadata, "", user)
 
 	// copy features
@@ -111,6 +113,18 @@ _REMOTE_USER=`+remoteUser+"\n"), 0666)
 # syntax=docker.io/docker/dockerfile:1.4
 ARG _DEV_CONTAINERS_BASE_IMAGE=placeholder`
 
+	buildKitContexts := map[string]string{}
+	buildKitContentFallback := ""
+	featuresContentRoot := "."
+	if buildKitSupported {
+		buildKitContexts["dev_containers_feature_content_source"] = featureFolder
+	} else {
+		buildKitContentFallback = "FROM dev_container_feature_content_temp as dev_containers_feature_content_source"
+		featuresContentRoot = "/tmp/build-features/"
+	}
+	dockerfileContent = strings.ReplaceAll(dockerfileContent, "#{nonBuildKitFeatureContentFallback}", buildKitContentFallback)
+	dockerfileContent = strings.ReplaceAll(dockerfileContent, "#{featuresContentRoot}", featuresContentRoot)
+
 	return &BuildInfo{
 		FeaturesFolder:          featureFolder,
 		DockerfileContent:       dockerfileContent,
@@ -120,9 +134,7 @@ ARG _DEV_CONTAINERS_BASE_IMAGE=placeholder`
 			"_DEV_CONTAINERS_BASE_IMAGE": target,
 			"_DEV_CONTAINERS_IMAGE_USER": user,
 		},
-		BuildKitContexts: map[string]string{
-			"dev_containers_feature_content_source": featureFolder,
-		},
+		BuildKitContexts: buildKitContexts,
 	}, nil
 }
 
@@ -237,6 +249,7 @@ func fetchFeatures(devContainerConfig *config.DevContainerConfig, log log.Logger
 		}
 
 		// parse feature
+		log.Debugf("Parse dev container feature in %s", featureFolder)
 		featureConfig, err := config.ParseDevContainerFeature(featureFolder)
 		if err != nil {
 			return nil, errors.Wrap(err, "parse feature "+featureID)
@@ -306,7 +319,7 @@ func computeFeatureOrder(devContainer *config.DevContainerConfig, features []*co
 }
 
 func computeAutomaticFeatureOrder(features []*config.FeatureSet) ([]*config.FeatureSet, error) {
-	g := graph.NewGraph(graph.NewNode("root", nil))
+	g := graph.NewGraph[*config.FeatureSet](graph.NewNode[*config.FeatureSet]("root", nil))
 
 	// build lookup map
 	lookup := map[string]*config.FeatureSet{}
@@ -349,7 +362,7 @@ func computeAutomaticFeatureOrder(features []*config.FeatureSet) ([]*config.Feat
 			return nil, err
 		}
 
-		ordered = append(ordered, leaf.Data.(*config.FeatureSet))
+		ordered = append(ordered, leaf.Data)
 	}
 
 	return ordered, nil

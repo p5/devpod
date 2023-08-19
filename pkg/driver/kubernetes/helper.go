@@ -2,9 +2,12 @@ package kubernetes
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/ghodss/yaml"
 	"github.com/loft-sh/log"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
@@ -54,6 +57,20 @@ func parseResources(resourceString string, log log.Logger) corev1.ResourceRequir
 		Limits:   limits,
 		Requests: requests,
 	}
+}
+
+func getPodTemplate(manifestFilePath string) (*corev1.Pod, error) {
+	body, err := os.ReadFile(manifestFilePath)
+	if err != nil {
+		return nil, err
+	}
+	pod := &corev1.Pod{}
+	err = yaml.Unmarshal(body, pod)
+	if err != nil {
+		return nil, errors.Wrap(err, "unmarshal pod template")
+	}
+
+	return pod, nil
 }
 
 func parseLabels(str string) (map[string]string, error) {

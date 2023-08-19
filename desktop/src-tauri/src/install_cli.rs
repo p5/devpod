@@ -6,6 +6,7 @@ use std::{env, path::PathBuf};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)]
 pub enum InstallCLIError {
     #[error("Unable to get current executable path")]
     NoExePath(#[source] std::io::Error),
@@ -150,7 +151,7 @@ fn install(_app_handle: AppHandle, force: bool) -> Result<(), InstallCLIError> {
 }
 
 fn copy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> std::io::Result<()> {
-    std::fs::copy(from, to).map(|_| Ok(()))
+    std::fs::copy(from, to).map(|_| ())
 }
 
 #[cfg(not(target_os = "windows"))]

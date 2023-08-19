@@ -27,6 +27,10 @@ type AllowedIDE struct {
 	Options ide.Options `json:"options,omitempty"`
 	// Icon holds an image URL that will be displayed
 	Icon string `json:"icon,omitempty"`
+	// IconDark holds an image URL that will be displayed in dark mode
+	IconDark string `json:"iconDark,omitempty"`
+	// Experimental indicates that this IDE is experimental
+	Experimental bool `json:"experimental,omitempty"`
 }
 
 var AllowedIDEs = []AllowedIDE{
@@ -35,6 +39,7 @@ var AllowedIDEs = []AllowedIDE{
 		DisplayName: "None",
 		Options:     map[string]ide.Option{},
 		Icon:        "https://devpod.sh/assets/none.svg",
+		IconDark:    "https://devpod.sh/assets/none_dark.svg",
 	},
 	{
 		Name:        config.IDEVSCode,
@@ -97,16 +102,19 @@ var AllowedIDEs = []AllowedIDE{
 		Icon:        "https://devpod.sh/assets/webstorm.svg",
 	},
 	{
-		Name:        config.IDEFleet,
-		DisplayName: "Fleet",
-		Options:     fleet.Options,
-		Icon:        "https://devpod.sh/assets/fleet.svg",
+		Name:         config.IDEFleet,
+		DisplayName:  "Fleet",
+		Options:      fleet.Options,
+		Icon:         "https://devpod.sh/assets/fleet.svg",
+		Experimental: true,
 	},
 	{
-		Name:        config.IDEJupyterNotebook,
-		DisplayName: "Jupyter Notebook",
-		Options:     jupyter.Options,
-		Icon:        "https://devpod.sh/assets/jupyter.svg",
+		Name:         config.IDEJupyterNotebook,
+		DisplayName:  "Jupyter Notebook",
+		Options:      jupyter.Options,
+		Icon:         "https://devpod.sh/assets/jupyter.svg",
+		IconDark:     "https://devpod.sh/assets/jupyter_dark.svg",
+		Experimental: true,
 	},
 }
 

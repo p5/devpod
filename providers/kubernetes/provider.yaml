@@ -28,10 +28,13 @@ optionGroups:
       - KUBECTL_PATH
       - INACTIVITY_TIMEOUT
       - STORAGE_CLASS
+      - PVC_ACCESS_MODE
       - RESOURCES
+      - POD_MANIFEST_TEMPLATE
       - NODE_SELECTOR
       - HELPER_RESOURCES
       - HELPER_IMAGE
+      - LABELS
     name: "Advanced Options"
 options:
   BUILD_REPOSITORY:
@@ -54,7 +57,7 @@ options:
   KUBERNETES_NAMESPACE:
     description: The kubernetes namespace to use
     command: |-
-      NAMESPACE=$(KUBECONFIG=${KUBERNETES_CONFIG} ${KUBECTL_PATH} config view --context=${KUBERNETES_CONTEXT} --minify -o jsonpath='{..namespace}' 2>/dev/null || true)
+      NAMESPACE=$(${KUBECTL_PATH} config view --kubeconfig=${KUBERNETES_CONFIG} --context=${KUBERNETES_CONTEXT} --minify -o jsonpath='{..namespace}' 2>/dev/null || true)
       if [ -z "${NAMESPACE}" ]; then
         NAMESPACE=devpod
       fi
@@ -85,11 +88,20 @@ options:
   STORAGE_CLASS:
     description: If defined, DevPod will use the given storage class to create the persistent volume claim. You will need to ensure the storage class exists in your cluster!
     global: true
+  PVC_ACCESS_MODE:
+    description: If defined, DevPod will use the given access mode to create the persistent volume claim. You will need to ensure the storage class support the given access mode!. E.g. RWO or ROX or RWX or RWOP
+    global: true
   NODE_SELECTOR:
     description: The node selector to use for the workspace pod. E.g. my-label=value,my-label-2=value-2
     global: true
   RESOURCES:
     description: The resources to use for the workspace container. E.g. requests.cpu=500m,limits.memory=5Gi,limits.gpu-vendor.example/example-gpu=1
+    global: true
+  POD_MANIFEST_TEMPLATE:
+    description: Pod manifest template file path used as template to build the devpod pod. E.g. /path/pod_manifest.yaml
+    global: true
+  LABELS:
+    description: The labels to use for the workspace pod. E.g. devpod.sh/example=value,devpod.sh/example2=value2
     global: true
   BUILDKIT_RESOURCES:
     description: The resources to use for the build pod. E.g. requests.cpu=500m,limits.memory=5Gi
@@ -112,6 +124,7 @@ agent:
     helperImage: ${HELPER_IMAGE}
     helperResources: ${HELPER_RESOURCES}
     resources: ${RESOURCES}
+    labels: ${LABELS}
     nodeSelector: ${NODE_SELECTOR}
     buildkitImage: ${BUILDKIT_IMAGE}
     buildkitPrivileged: ${BUILDKIT_PRIVILEGED}
@@ -120,6 +133,8 @@ agent:
     persistentVolumeSize: ${DISK_SIZE}
     createNamespace: ${CREATE_NAMESPACE}
     storageClassName: ${STORAGE_CLASS}
+    pvcAccessMode: ${PVC_ACCESS_MODE}
+    podManifestTemplate: ${POD_MANIFEST_TEMPLATE}
 exec:
   init: |-
     # Check if kubernetes is reachable

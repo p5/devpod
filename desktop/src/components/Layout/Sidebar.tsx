@@ -14,7 +14,6 @@ import { cloneElement, ReactElement, ReactNode } from "react"
 import { LinkProps, NavLink as RouterLink } from "react-router-dom"
 import { useSettings } from "../../contexts"
 import { DevpodWordmark } from "../../icons"
-import { isMacOS } from "../../lib"
 import { useBorderColor } from "../../Theme"
 import { LoftOSSBadge } from "../LoftOSSBadge"
 
@@ -25,6 +24,7 @@ export function Sidebar({ children, ...boxProps }: TSidebarProps) {
   const alternativeBackgroundColor = useColorModeValue("gray.100", "gray.900")
   const wordmarkColor = useColorModeValue("black", "white")
   const isLeft = useSettings().sidebarPosition === "left"
+  const { transparency } = useSettings()
 
   const sharedBackgroundMaterialProps = {
     "aria-hidden": true,
@@ -60,8 +60,8 @@ export function Sidebar({ children, ...boxProps }: TSidebarProps) {
       </HStack>
 
       {/* Background Material */}
-      {isMacOS ? (
-        <Box {...sharedBackgroundMaterialProps} backgroundColor={backgroundColor} opacity={0.7} />
+      {transparency ? (
+        <Box {...sharedBackgroundMaterialProps} backgroundColor={backgroundColor} opacity={0.2} />
       ) : (
         <Box {...sharedBackgroundMaterialProps} backgroundColor={alternativeBackgroundColor} />
       )}
@@ -84,6 +84,7 @@ export function SidebarMenuItem({ to, children, icon: iconProps }: TSidebarMenuP
   return (
     <Box paddingX="4" width="full">
       <Link
+        variant="ghost"
         display="flex"
         paddingX="4"
         paddingY="2"

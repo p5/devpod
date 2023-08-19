@@ -1,7 +1,6 @@
 package provider
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/loft-sh/devpod/pkg/config"
@@ -39,6 +38,9 @@ type Workspace struct {
 
 	// Source is the source where this workspace will be created from
 	Source WorkspaceSource `json:"source,omitempty"`
+
+	// DevContainerImage is the container image to use, overriding whatever is in the devcontainer.json
+	DevContainerImage string `json:"devContainerImage,omitempty"`
 
 	// DevContainerPath is the relative path where the devcontainer.json is located.
 	DevContainerPath string `json:"devContainerPath,omitempty"`
@@ -91,6 +93,9 @@ type WorkspaceSource struct {
 	// GitBranch is the branch to use
 	GitBranch string `json:"gitBranch,omitempty"`
 
+	// GitCommit is the commit SHA to checkout
+	GitCommit string `json:"gitCommit,omitempty"`
+
 	// LocalFolder is the local folder to use
 	LocalFolder string `json:"localFolder,omitempty"`
 
@@ -128,47 +133,59 @@ type CLIOptions struct {
 	IDE                  string   `json:"ide,omitempty"`
 	IDEOptions           []string `json:"ideOptions,omitempty"`
 	PrebuildRepositories []string `json:"prebuildRepositories,omitempty"`
+	DevContainerImage    string   `json:"devContainerImage,omitempty"`
 	DevContainerPath     string   `json:"devContainerPath,omitempty"`
 	WorkspaceEnv         []string `json:"workspaceEnv,omitempty"`
 	Recreate             bool     `json:"recreate,omitempty"`
+	Proxy                bool     `json:"proxy,omitempty"`
+	DisableDaemon        bool     `json:"disableDaemon,omitempty"`
+	DaemonInterval       string   `json:"daemonInterval,omitempty"`
 
 	// build options
 	Repository string   `json:"repository,omitempty"`
+	SkipPush   bool     `json:"skipPush,omitempty"`
 	Platform   []string `json:"platform,omitempty"`
+
+	// TESTING
+	ForceBuild            bool `json:"forceBuild,omitempty"`
+	ForceInternalBuildKit bool `json:"forceInternalBuildKit,omitempty"`
 }
 
 func (w WorkspaceSource) String() string {
 	if w.GitRepository != "" {
 		if w.GitBranch != "" {
 			return WorkspaceSourceGit + w.GitRepository + "@" + w.GitBranch
+		} else if w.GitCommit != "" {
+			return WorkspaceSourceGit + w.GitRepository + git.CommitDelimiter + w.GitCommit
 		}
 
 		return WorkspaceSourceGit + w.GitRepository
-	}
-
-	if w.LocalFolder != "" {
+	} else if w.LocalFolder != "" {
 		return WorkspaceSourceLocal + w.LocalFolder
+	} else if w.Image != "" {
+		return WorkspaceSourceImage + w.Image
 	}
 
-	return WorkspaceSourceImage + w.Image
+	return ""
 }
 
-func ParseWorkspaceSource(source string) (*WorkspaceSource, error) {
+func ParseWorkspaceSource(source string) *WorkspaceSource {
 	if strings.HasPrefix(source, WorkspaceSourceGit) {
-		gitRepo, gitBranch := git.NormalizeRepository(strings.TrimPrefix(source, WorkspaceSourceGit))
+		gitRepo, gitBranch, gitCommit := git.NormalizeRepository(strings.TrimPrefix(source, WorkspaceSourceGit))
 		return &WorkspaceSource{
 			GitRepository: gitRepo,
 			GitBranch:     gitBranch,
-		}, nil
+			GitCommit:     gitCommit,
+		}
 	} else if strings.HasPrefix(source, WorkspaceSourceLocal) {
 		return &WorkspaceSource{
 			LocalFolder: strings.TrimPrefix(source, WorkspaceSourceLocal),
-		}, nil
+		}
 	} else if strings.HasPrefix(source, WorkspaceSourceImage) {
 		return &WorkspaceSource{
 			Image: strings.TrimPrefix(source, WorkspaceSourceImage),
-		}, nil
+		}
 	}
 
-	return nil, fmt.Errorf("invalid workspace source: %s", source)
+	return nil
 }

@@ -82,7 +82,7 @@ func (cmd *SetupContainerCmd) Run(_ *cobra.Command, _ []string) error {
 	}
 
 	// start container daemon if necessary
-	if workspaceInfo.Agent.ContainerTimeout != "" {
+	if !workspaceInfo.CLIOptions.Proxy && !workspaceInfo.CLIOptions.DisableDaemon && workspaceInfo.Agent.ContainerTimeout != "" {
 		err = single.Single("devpod.daemon.pid", func() (*exec.Cmd, error) {
 			log.Default.Debugf("Start DevPod Container Daemon with Inactivity Timeout %s", workspaceInfo.Agent.ContainerTimeout)
 			binaryPath, err := os.Executable()
@@ -147,15 +147,14 @@ func (cmd *SetupContainerCmd) setupVSCode(setupInfo *config.Result, workspaceInf
 	}
 
 	user := config.GetRemoteUser(setupInfo)
+	err := vscode.NewVSCodeServer(vsCodeConfiguration.Extensions, settings, user, workspaceInfo.Workspace.IDE.Options, log).Install()
+	if err != nil {
+		return err
+	}
 
 	// don't install code-server if we don't have settings or extensions
 	if len(vsCodeConfiguration.Settings) == 0 && len(vsCodeConfiguration.Extensions) == 0 {
 		return nil
-	}
-
-	err := vscode.NewVSCodeServer(vsCodeConfiguration.Extensions, settings, user, workspaceInfo.Workspace.IDE.Options, log).Install()
-	if err != nil {
-		return err
 	}
 
 	if len(vsCodeConfiguration.Extensions) == 0 {

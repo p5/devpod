@@ -22,7 +22,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func NewRunner(agentPath, agentDownloadURL string, workspaceConfig *provider2.AgentWorkspaceInfo, log log.Logger) (*Runner, error) {
+func NewRunner(
+	agentPath, agentDownloadURL string,
+	workspaceConfig *provider2.AgentWorkspaceInfo,
+	log log.Logger,
+) (*Runner, error) {
 	driver, err := drivercreate.NewDriver(workspaceConfig, log)
 	if err != nil {
 		return nil, err
@@ -64,8 +68,13 @@ type UpOptions struct {
 	ForceBuild bool
 }
 
-func (r *Runner) prepare() (*config.SubstitutedConfig, *WorkspaceConfig, error) {
-	rawParsedConfig, err := config.ParseDevContainerJSON(r.LocalWorkspaceFolder, r.WorkspaceConfig.Workspace.DevContainerPath)
+func (r *Runner) prepare(
+	options provider2.CLIOptions,
+) (*config.SubstitutedConfig, *WorkspaceConfig, error) {
+	rawParsedConfig, err := config.ParseDevContainerJSON(
+		r.LocalWorkspaceFolder,
+		r.WorkspaceConfig.Workspace.DevContainerPath,
+	)
 
 	// We want to fail only in case of real errors, non-existing devcontainer.jon
 	// will be gracefully handled by the auto-detection mechanism
@@ -86,7 +95,11 @@ func (r *Runner) prepare() (*config.SubstitutedConfig, *WorkspaceConfig, error) 
 	configFile := rawParsedConfig.Origin
 
 	// get workspace folder within container
-	workspace := getWorkspace(r.LocalWorkspaceFolder, r.WorkspaceConfig.Workspace.ID, rawParsedConfig)
+	workspace := getWorkspace(
+		r.LocalWorkspaceFolder,
+		r.WorkspaceConfig.Workspace.ID,
+		rawParsedConfig,
+	)
 	r.SubstitutionContext = &config.SubstitutionContext{
 		DevContainerID:           config.GetDevContainerID(config.ListToObject(r.getLabels())),
 		LocalWorkspaceFolder:     r.LocalWorkspaceFolder,
@@ -106,6 +119,14 @@ func (r *Runner) prepare() (*config.SubstitutedConfig, *WorkspaceConfig, error) 
 	if parsedConfig.WorkspaceMount != "" {
 		workspace.WorkspaceMount = parsedConfig.WorkspaceMount
 	}
+
+	if options.DevContainerImage != "" {
+		parsedConfig.Build = config.ConfigBuildOptions{}
+		parsedConfig.Dockerfile = ""
+		parsedConfig.DockerfileContainer = config.DockerfileContainer{}
+		parsedConfig.ImageContainer = config.ImageContainer{Image: options.DevContainerImage}
+	}
+
 	parsedConfig.Origin = configFile
 	return &config.SubstitutedConfig{
 		Config: parsedConfig,
@@ -114,7 +135,7 @@ func (r *Runner) prepare() (*config.SubstitutedConfig, *WorkspaceConfig, error) 
 }
 
 func (r *Runner) Up(ctx context.Context, options UpOptions) (*config.Result, error) {
-	substitutedConfig, workspace, err := r.prepare()
+	substitutedConfig, workspace, err := r.prepare(options.CLIOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +149,12 @@ func (r *Runner) Up(ctx context.Context, options UpOptions) (*config.Result, err
 	// check if its a compose devcontainer.json
 	var result *config.Result
 	if isDockerFileConfig(substitutedConfig.Config) || substitutedConfig.Config.Image != "" {
-		result, err = r.runSingleContainer(ctx, substitutedConfig, workspace.WorkspaceMount, options)
+		result, err = r.runSingleContainer(
+			ctx,
+			substitutedConfig,
+			workspace.WorkspaceMount,
+			options,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -138,14 +164,38 @@ func (r *Runner) Up(ctx context.Context, options UpOptions) (*config.Result, err
 			return nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("dev container config is missing one of \"image\", \"dockerFile\" or \"dockerComposeFile\" properties")
+		r.Log.Warn("dev container config is missing one of \"image\", \"dockerFile\" or \"dockerComposeFile\" properties, defaulting to auto-detection")
+
+		lang, err := language.DetectLanguage(r.LocalWorkspaceFolder)
+		if err != nil {
+			return nil, fmt.Errorf("could not detect project language and dev container config is missing one of \"image\", \"dockerFile\" or \"dockerComposeFile\" properties")
+		}
+
+		if language.MapConfig[lang] == nil {
+			return nil, fmt.Errorf("could not detect project language and dev container config is missing one of \"image\", \"dockerFile\" or \"dockerComposeFile\" properties")
+		}
+
+		substitutedConfig.Config.ImageContainer = language.MapConfig[lang].ImageContainer
+
+		result, err = r.runSingleContainer(ctx, substitutedConfig, workspace.WorkspaceMount, options)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// return result
 	return result, nil
 }
 
-func (r *Runner) CommandDevContainer(ctx context.Context, containerId string, user string, command string, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+func (r *Runner) CommandDevContainer(
+	ctx context.Context,
+	containerId string,
+	user string,
+	command string,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+) error {
 	return r.Driver.CommandDevContainer(ctx, containerId, user, command, stdin, stdout, stderr)
 }
 
@@ -167,31 +217,37 @@ func isDockerFileConfig(config *config.DevContainerConfig) bool {
 	return config.Dockerfile != "" || config.Build.Dockerfile != ""
 }
 
-func runInitializeCommand(workspaceFolder string, config *config.DevContainerConfig, log log.Logger) error {
+func runInitializeCommand(
+	workspaceFolder string,
+	config *config.DevContainerConfig,
+	log log.Logger,
+) error {
 	if len(config.InitializeCommand) == 0 {
 		return nil
 	}
 
-	// should run in shell?
-	var args []string
-	if len(config.InitializeCommand) == 1 {
-		args = []string{"sh", "-c", config.InitializeCommand[0]}
-	} else {
-		args = config.InitializeCommand
-	}
+	for _, cmd := range config.InitializeCommand {
+		// should run in shell?
+		var args []string
+		if len(cmd) == 1 {
+			args = []string{"sh", "-c", cmd[0]}
+		} else {
+			args = cmd
+		}
 
-	// run the command
-	log.Infof("Running initializeCommand from devcontainer.json: '%s'", strings.Join(args, " "))
-	writer := log.Writer(logrus.InfoLevel, false)
-	defer writer.Close()
+		// run the command
+		log.Infof("Running initializeCommand from devcontainer.json: '%s'", strings.Join(args, " "))
+		writer := log.Writer(logrus.InfoLevel, false)
+		defer writer.Close()
 
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdout = writer
-	cmd.Stderr = writer
-	cmd.Dir = workspaceFolder
-	err := cmd.Run()
-	if err != nil {
-		return err
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdout = writer
+		cmd.Stderr = writer
+		cmd.Dir = workspaceFolder
+		err := cmd.Run()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -202,7 +258,10 @@ type WorkspaceConfig struct {
 	RemoteWorkspaceFolder string
 }
 
-func getWorkspace(workspaceFolder, workspaceID string, conf *config.DevContainerConfig) WorkspaceConfig {
+func getWorkspace(
+	workspaceFolder, workspaceID string,
+	conf *config.DevContainerConfig,
+) WorkspaceConfig {
 	if conf.WorkspaceMount != "" {
 		mount := config.ParseMount(conf.WorkspaceMount)
 		return WorkspaceConfig{
@@ -223,7 +282,12 @@ func getWorkspace(workspaceFolder, workspaceID string, conf *config.DevContainer
 
 	return WorkspaceConfig{
 		RemoteWorkspaceFolder: containerMountFolder,
-		WorkspaceMount:        fmt.Sprintf("type=bind,source=%s,target=%s%s", workspaceFolder, containerMountFolder, consistency),
+		WorkspaceMount: fmt.Sprintf(
+			"type=bind,source=%s,target=%s%s",
+			workspaceFolder,
+			containerMountFolder,
+			consistency,
+		),
 	}
 }
 

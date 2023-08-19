@@ -142,7 +142,7 @@ func (s *proxyClient) RefreshOptions(ctx context.Context, userOptionsRaw []strin
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	userOptions, err := provider.ParseOptions(s.devPodConfig, s.config, userOptionsRaw)
+	userOptions, err := provider.ParseOptions(userOptionsRaw)
 	if err != nil {
 		return perrors.Wrap(err, "parse options")
 	}
@@ -331,6 +331,38 @@ func (s *proxyClient) Status(ctx context.Context, options client.StatusOptions) 
 
 	// parse status
 	return client.ParseStatus(status.State)
+}
+
+func (s *proxyClient) ImportWorkspace(ctx context.Context, options client.ImportWorkspaceOptions) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	reader, writer := io.Pipe()
+	defer writer.Close()
+	go func() {
+		readLogStream(reader, s.log)
+	}()
+
+	err := RunCommandWithBinaries(
+		ctx,
+		"import",
+		s.config.Exec.Proxy.ImportWorkspace,
+		s.workspace.Context,
+		s.workspace,
+		nil,
+		s.devPodConfig.ProviderOptions(s.config.Name),
+		s.config,
+		options,
+		nil,
+		writer,
+		writer,
+		s.log,
+	)
+	if err != nil {
+		return fmt.Errorf("error importing a workspace: %w", err)
+	}
+
+	return nil
 }
 
 func EncodeOptions(options any, name string) map[string]string {

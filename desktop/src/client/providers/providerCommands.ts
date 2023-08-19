@@ -7,7 +7,7 @@ import {
   TProviderOptions,
   TProviders,
 } from "../../types"
-import { Command, isOk, toFlagArg } from "../command"
+import { Command, isOk, serializeRawOptions, toFlagArg } from "../command"
 import {
   DEVPOD_COMMAND_ADD,
   DEVPOD_COMMAND_DELETE,
@@ -19,10 +19,10 @@ import {
   DEVPOD_COMMAND_UPDATE,
   DEVPOD_COMMAND_USE,
   DEVPOD_FLAG_DEBUG,
+  DEVPOD_FLAG_DRY,
   DEVPOD_FLAG_JSON_LOG_OUTPUT,
   DEVPOD_FLAG_JSON_OUTPUT,
   DEVPOD_FLAG_NAME,
-  DEVPOD_FLAG_OPTION,
   DEVPOD_FLAG_SINGLE_MACHINE,
   DEVPOD_FLAG_USE,
 } from "../constants"
@@ -123,9 +123,7 @@ export class ProviderCommands {
     rawOptions?: Record<string, unknown>,
     reuseMachine?: boolean
   ) {
-    const optionsFlag = rawOptions
-      ? [toFlagArg(DEVPOD_FLAG_OPTION, serializeRawOptions(rawOptions))]
-      : []
+    const optionsFlag = rawOptions ? serializeRawOptions(rawOptions) : []
     const maybeResuseMachineFlag = reuseMachine ? [DEVPOD_FLAG_SINGLE_MACHINE] : []
 
     const result = await ProviderCommands.newCommand([
@@ -151,17 +149,20 @@ export class ProviderCommands {
   static async SetProviderOptions(
     id: TProviderID,
     rawOptions: Record<string, unknown>,
-    reuseMachine: boolean
+    reuseMachine: boolean,
+    dry?: boolean
   ) {
-    const optionsFlag = toFlagArg(DEVPOD_FLAG_OPTION, serializeRawOptions(rawOptions))
+    const optionsFlag = serializeRawOptions(rawOptions)
     const maybeResuseMachineFlag = reuseMachine ? [DEVPOD_FLAG_SINGLE_MACHINE] : []
+    const maybeDry = dry ? [DEVPOD_FLAG_DRY] : []
 
     const result = await ProviderCommands.newCommand([
       DEVPOD_COMMAND_PROVIDER,
       DEVPOD_COMMAND_SET_OPTIONS,
       id,
-      optionsFlag,
+      ...optionsFlag,
       ...maybeResuseMachineFlag,
+      ...maybeDry,
       DEVPOD_FLAG_JSON_LOG_OUTPUT,
     ]).run()
     if (result.err) {
@@ -170,6 +171,8 @@ export class ProviderCommands {
 
     if (!isOk(result.val)) {
       return getErrorFromChildProcess(result.val)
+    } else if (dry) {
+      return Return.Value(JSON.parse(result.val.stdout) as TProviderOptions)
     }
 
     return Return.Ok()
@@ -232,10 +235,4 @@ export class ProviderCommands {
 
     return Return.Ok()
   }
-}
-
-export function serializeRawOptions(rawOptions: Record<string, unknown>): string {
-  return Object.entries(rawOptions)
-    .map(([key, value]) => `${key}=${value}`)
-    .join(",")
 }

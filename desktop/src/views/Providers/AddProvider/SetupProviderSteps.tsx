@@ -96,8 +96,6 @@ export function SetupProviderSteps({
                 providerID={state.providerID}
                 isDefault={true}
                 reuseMachine={true}
-                options={state.options}
-                optionGroups={state.optionGroups}
                 containerRef={containerRef}
                 onFinish={completeConfigureProvider}
               />

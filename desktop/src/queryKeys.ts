@@ -7,6 +7,13 @@ export const QueryKeys = {
   PROVIDERS: ["providers"],
   IDES: ["ides"],
   COMMUNITY_CONTRIBUTIONS: ["communityContributions"],
+  CONTEXT_OPTIONS: ["contextOptions"],
+  RELEASES: ["releases"],
+  APP_VERSION: ["appVersion"],
+  UPDATE_RELEASE: ["updateRelease"],
+  PENDING_UPDATE: ["pendingUpdate"],
+  INSTALL_UPDATE: ["installUpdate"],
+  PRO_INSTANCES: ["proInstances"],
   workspace(id: TWorkspaceID): string[] {
     return [...QueryKeys.WORKSPACES, id]
   },
@@ -19,6 +26,9 @@ export const QueryKeys = {
   IS_CLI_INSTALLED: ["isCliInstalled"],
   providerOptions(id: TProviderID): string[] {
     return [...QueryKeys.provider(id), "options"]
+  },
+  providerSetOptions(id: TProviderID): string[] {
+    return [...QueryKeys.provider(id), "set-options"]
   },
   providerUpdate(id: TProviderID): string[] {
     return [...QueryKeys.provider(id), "update"]

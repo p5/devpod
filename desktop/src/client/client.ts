@@ -1,16 +1,38 @@
-import { clipboard, dialog, fs, invoke, os, path, process, shell } from "@tauri-apps/api"
-import { listen } from "@tauri-apps/api/event"
+import {
+  app,
+  clipboard,
+  dialog,
+  fs,
+  invoke,
+  os,
+  path,
+  process,
+  shell,
+  event,
+  updater,
+  window as tauriWindow,
+} from "@tauri-apps/api"
 import { Command } from "@tauri-apps/api/shell"
 import { TSettings } from "../contexts"
-import { isError, Result, Return } from "../lib"
+import { Result, Return, isError, noop } from "../lib"
 import { TCommunityContributions, TUnsubscribeFn } from "../types"
-import { IDEsClient } from "./ides/client"
+import { ContextClient } from "./context"
+import { IDEsClient } from "./ides"
 import { ProvidersClient } from "./providers"
 import { WorkspacesClient } from "./workspaces"
+import { UseToastOptions } from "@chakra-ui/react"
+import { Release } from "../gen"
+import { ProClient } from "./pro"
 
 // These types have to match the rust types! Make sure to update them as well!
 type TChannels = {
   event:
+    | Readonly<{
+        type: "ShowToast"
+        message: string
+        title: string
+        status: NonNullable<UseToastOptions["status"]>
+      }>
     | Readonly<{ type: "ShowDashboard" }>
     | Readonly<{ type: "OpenWorkspaceFailed" }>
     | Readonly<{
@@ -31,6 +53,8 @@ class Client {
   public readonly workspaces = new WorkspacesClient()
   public readonly providers = new ProvidersClient()
   public readonly ides = new IDEsClient()
+  public readonly context = new ContextClient()
+  public readonly pro = new ProClient()
 
   public setSetting<TSettingName extends keyof TClientSettings>(
     name: TSettingName,
@@ -40,6 +64,7 @@ class Client {
       this.workspaces.setDebug(value)
       this.providers.setDebug(value)
       this.ides.setDebug(value)
+      this.pro.setDebug(value)
     }
   }
   public ready(): Promise<void> {
@@ -49,16 +74,16 @@ class Client {
   public async subscribe<T extends TChannelName>(
     channel: T,
     listener: TClientEventListener<T>
-  ): Promise<Result<TUnsubscribeFn>> {
+  ): Promise<TUnsubscribeFn> {
     // `TClient` is strictly typed so we're fine casting the response as `any`.
     try {
-      const unsubscribe = await listen<any>(channel, (event) => {
+      const unsubscribe = await event.listen<any>(channel, (event) => {
         listener(event.payload)
       })
 
-      return Return.Value(unsubscribe)
-    } catch (e) {
-      return Return.Failed(e + "")
+      return unsubscribe
+    } catch {
+      return noop
     }
   }
 
@@ -68,6 +93,10 @@ class Client {
 
   public fetchArch(): Promise<TArch> {
     return os.arch()
+  }
+
+  public fetchVersion(): Promise<string> {
+    return app.getVersion()
   }
 
   public async fetchCommunityContributions(): Promise<Result<TCommunityContributions>> {
@@ -81,6 +110,25 @@ class Client {
       }
 
       const errMsg = "Unable to fetch community contributions"
+      if (typeof e === "string") {
+        return Return.Failed(`${errMsg}: ${e}`)
+      }
+
+      return Return.Failed(errMsg)
+    }
+  }
+
+  public async fetchReleases(): Promise<Result<readonly Release[]>> {
+    try {
+      const releases = await invoke<readonly Release[]>("get_releases")
+
+      return Return.Value(releases)
+    } catch (e) {
+      if (isError(e)) {
+        return Return.Failed(e.message)
+      }
+
+      const errMsg = "Unable to fetch releases"
       if (typeof e === "string") {
         return Return.Failed(`${errMsg}: ${e}`)
       }
@@ -172,6 +220,66 @@ class Client {
     } catch (e) {
       return Return.Failed(`Unable to write to clipboard: ${e}`)
     }
+  }
+
+  public async checkUpdates(): Promise<Result<boolean>> {
+    try {
+      const isOk = await invoke<boolean>("check_updates")
+
+      return Return.Value(isOk)
+    } catch (e) {
+      return Return.Failed(`${e}`)
+    }
+  }
+
+  public async fetchPendingUpdate(): Promise<Result<Release>> {
+    try {
+      const release = await invoke<Release>("get_pending_update")
+
+      return Return.Value(release)
+    } catch (e) {
+      return Return.Failed(`${e}`)
+    }
+  }
+
+  public async installUpdate(): Promise<Result<void>> {
+    try {
+      let unsubscribe: TUnsubscribeFn | undefined
+      // Synchronize promise state with update operation
+      await new Promise((res, rej) => {
+        updater
+          .onUpdaterEvent((event) => {
+            if (event.status === "ERROR") {
+              unsubscribe?.()
+              rej(event.error)
+
+              return
+            }
+
+            if (event.status === "DONE") {
+              unsubscribe?.()
+              res(undefined)
+
+              return
+            }
+          })
+          .then(async (u) => {
+            unsubscribe = u
+            await updater.installUpdate()
+          })
+      })
+
+      return Return.Ok()
+    } catch (e) {
+      return Return.Failed(`${e}`)
+    }
+  }
+
+  public async restart(): Promise<void> {
+    await process.relaunch()
+  }
+  public async closeCurrentWindow(): Promise<void> {
+    await tauriWindow.getCurrent().close()
   }
 }
 

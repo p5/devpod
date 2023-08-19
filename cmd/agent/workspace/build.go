@@ -2,7 +2,6 @@ package workspace
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/loft-sh/devpod/cmd/flags"
@@ -51,10 +50,9 @@ func (cmd *BuildCmd) Run(ctx context.Context) error {
 		return nil
 	}
 
-	// check if repository is set
-	if workspaceInfo.CLIOptions.Repository == "" {
-		return fmt.Errorf("repository needs to be specified")
-	}
+	// make sure daemon does shut us down while we are doing things
+	agent.CreateWorkspaceBusyFile(workspaceInfo.Origin)
+	defer agent.DeleteWorkspaceBusyFile(workspaceInfo.Origin)
 
 	// initialize the workspace
 	cancelCtx, cancel := context.WithCancel(ctx)
@@ -93,7 +91,11 @@ func (cmd *BuildCmd) Run(ctx context.Context) error {
 			return errors.Wrap(err, "build")
 		}
 
-		logger.Donef("Successfully build and pushed image %s", imageName)
+		if workspaceInfo.CLIOptions.SkipPush {
+			logger.Donef("Successfully build image %s", imageName)
+		} else {
+			logger.Donef("Successfully build and pushed image %s", imageName)
+		}
 	}
 
 	return nil

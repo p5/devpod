@@ -9,17 +9,11 @@ import {
 } from "react"
 import { client } from "../client"
 import { getKeys } from "../lib"
-import { LocalStorageBackend, Store } from "../lib"
+import { LocalStorageToFileMigrationBackend, Store } from "../lib"
 import { TUnsubscribeFn } from "../types"
+import { Settings } from "../gen"
 
-export type TSettings = {
-  sidebarPosition: "left" | "right"
-  debugFlag: boolean
-  partyParrot: boolean
-  fixedIDE: boolean
-  zoom: "sm" | "md" | "lg" | "xl"
-  experimental_multiDevcontainer: boolean
-}
+export type TSettings = Settings
 type TSetting = keyof TSettings
 
 type TSettingsContext = Readonly<{
@@ -35,14 +29,19 @@ const initialSettings: TSettings = {
   partyParrot: false,
   fixedIDE: false,
   zoom: "md",
+  transparency: false,
+  autoUpdate: true,
   experimental_multiDevcontainer: false,
+  experimental_fleet: true,
+  experimental_jupyterNotebooks: true,
 }
 function getSettingKeys(): readonly TSetting[] {
   return getKeys(initialSettings)
 }
 
-const DEBUG_STORE_KEY = "settings"
-const settingsStore = new Store(new LocalStorageBackend(DEBUG_STORE_KEY))
+// WARN: needs to match the filename on the rust side
+const SETTING_STORE_KEY = "settings"
+const settingsStore = new Store(new LocalStorageToFileMigrationBackend(SETTING_STORE_KEY))
 
 export function SettingsProvider({ children }: Readonly<{ children?: ReactNode }>) {
   const [settings, setSettings] = useState(initialSettings)

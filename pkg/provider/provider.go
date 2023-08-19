@@ -18,6 +18,9 @@ type ProviderConfig struct {
 	// Icon holds an image URL that will be displayed
 	Icon string `json:"icon,omitempty"`
 
+	// IconDark holds an image URL that will be displayed in dark mode
+	IconDark string `json:"iconDark,omitempty"`
+
 	// Home holds the provider home URL
 	Home string `json:"home,omitempty"`
 
@@ -31,7 +34,7 @@ type ProviderConfig struct {
 	OptionGroups []ProviderOptionGroup `json:"optionGroups,omitempty"`
 
 	// Options are the provider options.
-	Options map[string]*ProviderOption `json:"options,omitempty"`
+	Options map[string]*types.Option `json:"options,omitempty"`
 
 	// Agent allows you to override agent configuration
 	Agent ProviderAgentConfig `json:"agent,omitempty"`
@@ -148,6 +151,9 @@ type ProviderKubernetesDriverConfig struct {
 	// Resources holds the Kubernetes resources for the workspace container
 	Resources string `json:"resources,omitempty"`
 
+	// Labels holds the Kubernetes labels for the workspace container
+	Labels string `json:"labels,omitempty"`
+
 	// NodeSelector holds the node selector for the workspace pod
 	NodeSelector string `json:"nodeSelector,omitempty"`
 
@@ -178,6 +184,12 @@ type ProviderKubernetesDriverConfig struct {
 
 	// StorageClassName is the name of the custom storage class
 	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// PVCAccessMode is the access mode of the PVC. ie RWO,ROX,RWX,RWOP
+	PVCAccessMode string `json:"pvcAccessMode,omitempty"`
+
+	// PodManifestTemplate is the path of the pod manifest template file
+	PodManifestTemplate string `json:"podManifestTemplate,omitempty"`
 }
 
 type ProviderDockerDriverConfig struct {
@@ -258,14 +270,13 @@ type ProxyCommands struct {
 
 	// Status proxies the status command
 	Status types.StrArray `json:"status,omitempty"`
-}
 
-type ProviderOption struct {
-	types.Option
+	// ImportWorkspace proxies the import command
+	ImportWorkspace types.StrArray `json:"import,omitempty"`
 }
 
 type SubOptions struct {
-	Options map[string]types.Option `json:"options,omitempty"`
+	Options map[string]*types.Option `json:"options,omitempty"`
 }
 
 func (c *ProviderConfig) IsMachineProvider() bool {

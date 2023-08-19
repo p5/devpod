@@ -1,3 +1,4 @@
+import { Form } from "@/components/Form"
 import { CheckIcon } from "@chakra-ui/icons"
 import {
   Button,
@@ -23,7 +24,6 @@ import {
   useBreakpointValue,
   useColorModeValue,
 } from "@chakra-ui/react"
-import styled from "@emotion/styled"
 import { useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "framer-motion"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -50,12 +50,6 @@ import { LoadingProviderIndicator } from "./LoadingProviderIndicator"
 import { FieldName, TFormValues, TSetupProviderResult } from "./types"
 import { useAddProvider } from "./useAddProvider"
 
-const Form = styled.form`
-  width: 100%;
-  display: flex;
-  flex-flow: column nowrap;
-  justify-content: center;
-`
 const ALLOWED_NAMES_REGEX = /^[a-z0-9\\-]+$/
 const DEFAULT_VAL_OPTS: SetValueConfig = {
   shouldDirty: true,
@@ -87,6 +81,7 @@ export function SetupProviderSourceForm({
   const providerName = watch(FieldName.PROVIDER_NAME, undefined)
   const queryClient = useQueryClient()
   const borderColor = useBorderColor()
+  const hoverBackgroundColor = useColorModeValue("gray.50", "gray.800")
 
   const {
     mutate: addProvider,
@@ -236,7 +231,7 @@ export function SetupProviderSourceForm({
 
   return (
     <>
-      <Form onSubmit={handleSubmit(onSubmit)} spellCheck={false}>
+      <Form onSubmit={handleSubmit(onSubmit)}>
         <Stack spacing={6} width="full" alignItems="center" paddingBottom={8}>
           <FormControl
             isRequired
@@ -288,6 +283,7 @@ export function SetupProviderSourceForm({
                     as={Button}
                     isDisabled={isLoading || !communityProviders || communityProviders.length === 0}
                     _disabled={{ opacity: 1, cursor: "not-allowed" }}
+                    _hover={{ bg: hoverBackgroundColor }}
                     variant="ghost"
                     width="fit-content"
                     height="fit-content"
@@ -367,8 +363,10 @@ export function SetupProviderSourceForm({
 
             {!formState.isDirty && (
               <>
-                <Text fontWeight="bold">Choose your provider</Text>
-                <Text marginBottom="8">
+                <Text color="gray.500" fontWeight="bold">
+                  Choose your provider
+                </Text>
+                <Text color="gray.500" marginBottom="8">
                   Providers determine how and where your workspaces run. They connect to the cloud
                   platform - or local environment - of your choice and spin up your workspaces. You
                   can choose from a number of pre-built providers, or connect your own.

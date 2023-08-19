@@ -78,13 +78,21 @@ func (r *Runner) runSingleContainer(ctx context.Context, parsedConfig *config.Su
 			return nil, errors.Wrap(err, "start dev container")
 		}
 
-		//TODO: wait here a bit for correct startup?
+		// TODO: wait here a bit for correct startup?
 
 		// get container details
 		containerDetails, err = r.Driver.FindDevContainer(ctx, labels)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// set remoteenv
+	if mergedConfig.RemoteEnv == nil {
+		mergedConfig.RemoteEnv = make(map[string]string)
+	}
+	if _, ok := mergedConfig.RemoteEnv["PATH"]; !ok {
+		mergedConfig.RemoteEnv["PATH"] = "${containerEnv:PATH}"
 	}
 
 	// substitute config with container env

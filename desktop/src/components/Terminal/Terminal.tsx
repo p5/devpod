@@ -3,25 +3,23 @@ import { css } from "@emotion/react"
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react"
 import { Terminal as XTermTerminal, ITheme as IXTermTheme } from "xterm"
 import { FitAddon } from "xterm-addon-fit"
-import { exists } from "../../lib"
+import { exists, remToPx } from "../../lib"
 
 type TTerminalRef = Readonly<{
   clear: VoidFunction
   write: (data: string) => void
   writeln: (data: string) => void
 }>
+type TTerminalProps = Readonly<{ fontSize: string }>
 export type TTerminal = TTerminalRef
 
-export const Terminal = forwardRef<TTerminalRef, {}>(function T(_, ref) {
+export const Terminal = forwardRef<TTerminalRef, TTerminalProps>(function T({ fontSize }, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTermTerminal | null>(null)
   const termFitRef = useRef<FitAddon | null>(null)
 
-  const backgroundToken = useColorModeValue("gray.900", "gray.300")
-  const backgroundColor = useToken("colors", backgroundToken)
-
-  const textToken = useColorModeValue("gray.100", "gray.900")
-  const textColor = useToken("colors", textToken)
+  const backgroundColor = useToken("colors", "gray.900")
+  const textColor = useToken("colors", "gray.100")
 
   const scrollBarThumbToken = useColorModeValue("gray.500", "gray.200")
   const scrollBarThumbColor = useToken("colors", scrollBarThumbToken)
@@ -40,10 +38,10 @@ export const Terminal = forwardRef<TTerminalRef, {}>(function T(_, ref) {
         convertEol: true,
         scrollback: 25_000,
         theme: terminalTheme,
-        // TODO: should be configurable via props
         cursorStyle: "underline",
         disableStdin: true,
         cursorBlink: false,
+        fontSize: remToPx(fontSize),
       })
       terminalRef.current = terminal
 
@@ -93,6 +91,14 @@ export const Terminal = forwardRef<TTerminalRef, {}>(function T(_, ref) {
       maybeTheme = terminalTheme
     }
   }, [terminalTheme])
+
+  useEffect(() => {
+    // TODO: resize when global font size changes
+    let maybeFontSize = terminalRef.current?.options.fontSize
+    if (exists(maybeFontSize)) {
+      maybeFontSize = remToPx(fontSize)
+    }
+  }, [fontSize])
 
   useImperativeHandle(
     ref,

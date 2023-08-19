@@ -74,10 +74,14 @@ func (cmd *UpCmd) Run(ctx context.Context) error {
 		return nil
 	}
 
+	// make sure daemon does shut us down while we are doing things
+	agent.CreateWorkspaceBusyFile(workspaceInfo.Origin)
+	defer agent.DeleteWorkspaceBusyFile(workspaceInfo.Origin)
+
 	// initialize the workspace
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	tunnelClient, logger, credentialsDir, err := initWorkspace(cancelCtx, cancel, workspaceInfo, cmd.Debug, true)
+	tunnelClient, logger, credentialsDir, err := initWorkspace(cancelCtx, cancel, workspaceInfo, cmd.Debug, !workspaceInfo.CLIOptions.Proxy && !workspaceInfo.CLIOptions.DisableDaemon)
 	if err != nil {
 		err1 := clientimplementation.DeleteWorkspaceFolder(workspaceInfo.Workspace.Context, workspaceInfo.Workspace.ID, logger)
 		if err1 != nil {
@@ -206,12 +210,14 @@ func prepareWorkspace(ctx context.Context, workspaceInfo *provider2.AgentWorkspa
 	// check what type of workspace this is
 	if workspaceInfo.Workspace.Source.GitRepository != "" {
 		log.Debugf("Clone Repository")
-		err = CloneRepository(ctx, workspaceInfo.Agent.Local == "true", workspaceInfo.ContentFolder, workspaceInfo.Workspace.Source.GitRepository, workspaceInfo.Workspace.Source.GitBranch, helper, log)
+		err = CloneRepository(ctx, workspaceInfo.Agent.Local == "true", workspaceInfo.ContentFolder, workspaceInfo.Workspace.Source.GitRepository, workspaceInfo.Workspace.Source.GitBranch, workspaceInfo.Workspace.Source.GitCommit, helper, log)
 		if err != nil {
 			// fallback
 			log.Errorf("Cloning failed: %v. Trying cloning on local machine and uploading folder", err)
 			return RemoteCloneAndDownload(ctx, workspaceInfo.ContentFolder, client, log)
 		}
+
+		return nil
 	} else if workspaceInfo.Workspace.Source.LocalFolder != "" {
 		log.Debugf("Download Local Folder")
 		return DownloadLocalFolder(ctx, workspaceInfo.ContentFolder, client, log)
@@ -327,7 +333,7 @@ func installDaemon(workspaceInfo *provider2.AgentWorkspaceInfo, log log.Logger) 
 	}
 
 	log.Debugf("Installing DevPod daemon into server...")
-	err := daemon.InstallDaemon(workspaceInfo.Agent.DataPath, log)
+	err := daemon.InstallDaemon(workspaceInfo.Agent.DataPath, workspaceInfo.CLIOptions.DaemonInterval, log)
 	if err != nil {
 		return errors.Wrap(err, "install daemon")
 	}
@@ -383,6 +389,7 @@ func (cmd *UpCmd) devPodUp(ctx context.Context, workspaceInfo *provider2.AgentWo
 		return nil, err
 	}
 
+	// start the devcontainer
 	result, err := runner.Up(ctx, devcontainer.UpOptions{
 		CLIOptions: workspaceInfo.CLIOptions,
 	})
@@ -393,7 +400,7 @@ func (cmd *UpCmd) devPodUp(ctx context.Context, workspaceInfo *provider2.AgentWo
 	return result, nil
 }
 
-func CloneRepository(ctx context.Context, local bool, workspaceDir, repository, branch, helper string, log log.Logger) error {
+func CloneRepository(ctx context.Context, local bool, workspaceDir, repository, branch, commit, helper string, log log.Logger) error {
 	// remove the credential helper or otherwise we will receive strange errors within the container
 	defer func() {
 		if helper != "" {
@@ -476,6 +483,18 @@ func CloneRepository(ctx context.Context, local bool, workspaceDir, repository, 
 	err := gitCommand.Run()
 	if err != nil {
 		return errors.Wrap(err, "error cloning repository")
+	}
+
+	if commit != "" {
+		args := []string{"reset", "--hard", commit}
+		gitCommand := git.CommandContext(ctx, args...)
+		gitCommand.Dir = workspaceDir
+		gitCommand.Stdout = writer
+		gitCommand.Stderr = writer
+		err := gitCommand.Run()
+		if err != nil {
+			return errors.Wrap(err, "error resetting head to commit")
+		}
 	}
 
 	return nil

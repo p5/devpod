@@ -30,12 +30,14 @@ const RemoteDevPodHelperLocation = "/tmp/devpod"
 
 const ContainerActivityFile = "/tmp/devpod.activity"
 
-const WorkspaceDevContainerResult = "result.json"
-
 const defaultAgentDownloadURL = "https://github.com/p5/devpod/releases/download/"
 
+const EnvDevPodAgentURL = "DEVPOD_AGENT_URL"
+
+const WorkspaceBusyFile = "workspace.lock"
+
 func DefaultAgentDownloadURL() string {
-	devPodAgentURL := os.Getenv("DEVPOD_AGENT_URL")
+	devPodAgentURL := os.Getenv(EnvDevPodAgentURL)
 	if devPodAgentURL != "" {
 		return strings.TrimSuffix(devPodAgentURL, "/") + "/"
 	}
@@ -174,6 +176,26 @@ func WriteWorkspaceInfoAndDeleteOld(workspaceInfoEncoded string, deleteWorkspace
 
 	workspaceInfo.Origin = workspaceDir
 	return false, workspaceInfo, nil
+}
+
+func CreateWorkspaceBusyFile(folder string) {
+	filePath := filepath.Join(folder, WorkspaceBusyFile)
+	_, err := os.Stat(filePath)
+	if err == nil {
+		return
+	}
+
+	_ = os.WriteFile(filePath, nil, 0666)
+}
+
+func HasWorkspaceBusyFile(folder string) bool {
+	filePath := filepath.Join(folder, WorkspaceBusyFile)
+	_, err := os.Stat(filePath)
+	return err == nil
+}
+
+func DeleteWorkspaceBusyFile(folder string) {
+	_ = os.Remove(filepath.Join(folder, WorkspaceBusyFile))
 }
 
 func writeWorkspaceInfo(file string, workspaceInfo *provider2.AgentWorkspaceInfo) error {

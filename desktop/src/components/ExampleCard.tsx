@@ -1,9 +1,19 @@
-import { BoxProps, Card, Image, Text, Tooltip, useColorModeValue, useToken } from "@chakra-ui/react"
-import React, { useId } from "react"
+import {
+  BoxProps,
+  Card,
+  Image,
+  ImageProps,
+  Text,
+  Tooltip,
+  useColorMode,
+  useColorModeValue,
+  useToken,
+} from "@chakra-ui/react"
+import { ReactElement, cloneElement, useMemo } from "react"
 
 type TExampleCardProps = {
   name: string
-  image?: string
+  image?: string | ReactElement
   size?: keyof typeof sizes
 
   isSelected?: boolean
@@ -26,6 +36,8 @@ export function ExampleCard({
   onClick,
 }: TExampleCardProps) {
   const hoverBackgroundColor = useColorModeValue("gray.50", "gray.800")
+  const { colorMode } = useColorMode()
+
   const primaryColorLight = useToken("colors", "primary.400")
   const primaryColorDark = useToken("colors", "primary.800")
 
@@ -38,7 +50,11 @@ export function ExampleCard({
           bottom: 0,
           left: 0,
           right: 0,
-          background: `linear-gradient(135deg, ${primaryColorLight}55 30%, ${primaryColorDark}55, ${primaryColorDark}88)`,
+          background:
+            colorMode === "light"
+              ? `linear-gradient(135deg, ${primaryColorLight}55 30%, ${primaryColorDark}55, ${primaryColorDark}88)`
+              : `linear-gradient(135deg, ${primaryColorLight}AA 30%, ${primaryColorDark}AA, ${primaryColorDark}CC)`,
+          ...(colorMode === "dark" ? { mixBlendMode: "overlay" } : {}),
           opacity: 0.7,
           width: "full",
           height: "full",
@@ -48,6 +64,18 @@ export function ExampleCard({
     : {}
 
   const disabledProps = isDisabled ? { filter: "grayscale(100%)", cursor: "not-allowed" } : {}
+
+  const imageElement = useMemo(() => {
+    if (image === undefined) {
+      return null
+    }
+    const imageProps: ImageProps = { objectFit: "fill", overflow: "hidden", zIndex: "1" }
+    if (typeof image === "string") {
+      return <Image src={image} {...imageProps} />
+    }
+
+    return cloneElement(image, imageProps)
+  }, [image])
 
   return (
     <Tooltip textTransform={"capitalize"} label={name} isDisabled={size === "lg"}>
@@ -67,12 +95,12 @@ export function ExampleCard({
         {...(onClick && !isDisabled && !isSelected ? { onClick } : {})}
         {...selectedProps}
         {...disabledProps}>
-        <Image objectFit="fill" overflow="hidden" zIndex="1" src={image} />
+        {imageElement}
         {size === "lg" && (
           <Text
             paddingBottom="1"
             fontSize="11px"
-            color="gray.500"
+            color="gray.400"
             fontWeight="medium"
             overflow="hidden"
             maxWidth={sizes[size]}

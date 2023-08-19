@@ -15,25 +15,27 @@ import {
   Switch,
   Text,
   Tooltip,
+  useColorMode,
   useColorModeValue,
   useToken,
   VStack,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo } from "react"
 import { Controller, ControllerRenderProps } from "react-hook-form"
 import { FiFolder } from "react-icons/fi"
 import { useNavigate } from "react-router"
-import { useSearchParams } from "react-router-dom"
+import { Link as RouterLink, useSearchParams } from "react-router-dom"
 import { client } from "../../../client"
-import { ExampleCard } from "../../../components"
+import { Form, ExampleCard, IDEIcon, WarningMessageBox } from "@/components"
 import { RECOMMENDED_PROVIDER_SOURCES, SIDEBAR_WIDTH } from "../../../constants"
-import { useProviders, useWorkspace } from "../../../contexts"
+import { useProvider, useProviders, useWorkspace, useWorkspaces } from "../../../contexts"
+import { Plus } from "../../../icons"
+import { ProviderPlaceholderSvg } from "../../../images"
 import { exists, getKeys, isEmpty, useFormErrors } from "../../../lib"
-import { QueryKeys } from "../../../queryKeys"
 import { Routes } from "../../../routes"
 import { useBorderColor } from "../../../Theme"
 import { TIDE } from "../../../types"
+import { useIDEs } from "../../../useIDEs"
 import { useSetupProviderModal } from "../../Providers"
 import { WORKSPACE_EXAMPLES } from "./constants"
 import {
@@ -45,19 +47,8 @@ import {
 } from "./types"
 import { useCreateWorkspaceForm } from "./useCreateWorkspaceForm"
 
-const Form = styled.form`
-  width: 100%;
-  display: flex;
-  justify-content: center;
-`
-
 export function CreateWorkspace() {
-  const idesQuery = useQuery({
-    queryKey: QueryKeys.IDES,
-    queryFn: async () => (await client.ides.listAll()).unwrap(),
-  })
-
-  const ides = useMemo(() => idesQuery.data, [idesQuery.data])
+  const { ides } = useIDEs()
 
   const searchParams = useCreateWorkspaceParams()
   const navigate = useNavigate()
@@ -169,12 +160,15 @@ export function CreateWorkspace() {
   const backgroundColor = useColorModeValue("gray.50", "gray.800")
   const borderColor = useBorderColor()
   const inputBackgroundColor = useColorModeValue("white", "black")
+  const bottomBarBackgroundColor = useColorModeValue("white", "background.darkest")
+  const { colorMode } = useColorMode()
 
   return (
     <>
-      <Form ref={formRef} onSubmit={onSubmit}>
+      <Form ref={formRef} onSubmit={onSubmit} justifyContent={"center"}>
         <VStack align="start" spacing="6" alignItems="center" width="full" maxWidth="container.lg">
           <HStack
+            gap="0"
             width="full"
             height="full"
             borderRadius="lg"
@@ -213,10 +207,10 @@ export function CreateWorkspace() {
                     leftIcon={<Icon as={FiFolder} />}
                     borderTopLeftRadius={0}
                     borderBottomLeftRadius={0}
-                    borderTop={"1px solid white"}
-                    borderRight={"1px solid white"}
-                    borderBottom={"1px solid white"}
-                    borderColor={"gray.200"}
+                    borderTopWidth={"thin"}
+                    borderRightWidth={"thin"}
+                    borderBottomWidth={"thin"}
+                    borderColor={borderColor}
                     height={"42px"}
                     flex={"0 0 140px"}
                     onClick={handleSelectFolderClicked}>
@@ -271,7 +265,9 @@ export function CreateWorkspace() {
                     <ExampleCard
                       key={example.source}
                       size="sm"
-                      image={example.image}
+                      image={
+                        colorMode === "dark" ? example.imageDark ?? example.image : example.image
+                      }
                       name={example.name}
                       isSelected={currentSource === example.source}
                       onClick={() => handleExampleCardClicked(example.source)}
@@ -308,17 +304,14 @@ export function CreateWorkspace() {
                   <FormHelperText>Use this provider to create the workspace.</FormHelperText>
                 )}
               </FormControl>
+
               <FormControl isRequired isInvalid={exists(defaultIDEError)}>
                 <FormLabel>Default IDE</FormLabel>
                 <Controller
                   name={FieldName.DEFAULT_IDE}
                   control={control}
                   render={({ field }) => (
-                    <IDEInput
-                      field={field}
-                      ides={idesQuery.data}
-                      onClick={(name) => field.onChange(name)}
-                    />
+                    <IDEInput field={field} ides={ides} onClick={(name) => field.onChange(name)} />
                   )}
                 />
                 {exists(defaultIDEError) ? (
@@ -437,7 +430,7 @@ export function CreateWorkspace() {
             alignItems="center"
             borderTopWidth="thin"
             borderTopColor={borderColor}
-            backgroundColor="white"
+            backgroundColor={bottomBarBackgroundColor}
             paddingX={{ base: "8", xl: "0" }}
             paddingY="8"
             zIndex="overlay">
@@ -475,41 +468,67 @@ type TProviderInputProps = Readonly<{
 }>
 function ProviderInput({ options, field, onAddProviderClicked }: TProviderInputProps) {
   const gridChildWidth = useToken("sizes", "12")
+  const [provider] = useProvider(field.value)
+  const workspaces = useWorkspaces()
+  const reuseWorkspace = useMemo(() => {
+    return workspaces.find((workspace) => {
+      return (
+        provider?.state?.singleMachine &&
+        workspace.provider?.name === provider.config?.name &&
+        workspace.machine?.machineId?.startsWith("devpod-shared-")
+      )
+    })?.id
+  }, [provider, workspaces])
 
   return (
-    <Grid
-      templateColumns={`repeat(auto-fit, ${gridChildWidth})`}
-      gap="2"
-      height="fit-content"
-      width="full"
-      flexWrap="wrap">
-      {options.installed.map((p) => (
-        <Box key={p.name}>
-          <ExampleCard
-            isSelected={field.value === p.name}
-            name={p.name}
-            size="sm"
-            onClick={() => field.onChange(p.name)}
-            image={p.config?.icon ?? ProviderPlaceholderSvg}
+    <VStack align="start" width="full">
+      <Grid
+        templateColumns={`repeat(auto-fit, ${gridChildWidth})`}
+        gap="2"
+        height="fit-content"
+        width="full"
+        flexWrap="wrap">
+        {options.installed.map((p) => (
+          <Box key={p.name}>
+            <ExampleCard
+              isSelected={field.value === p.name}
+              name={p.name}
+              size="sm"
+              onClick={() => field.onChange(p.name)}
+              image={p.config?.icon ?? ProviderPlaceholderSvg}
+            />
+          </Box>
+        ))}
+        <Tooltip label="Add Provider">
+          <IconButton
+            variant="outline"
+            size="lg"
+            icon={<Plus />}
+            aria-label="Add Provider"
+            onClick={() => onAddProviderClicked?.()}
           />
-        </Box>
-      ))}
-      <Tooltip label="Add Provider">
-        <IconButton
-          variant="outline"
-          size="lg"
-          icon={<Plus />}
-          aria-label="Add Provider"
-          onClick={() => onAddProviderClicked?.()}
+        </Tooltip>
+      </Grid>
+
+      {reuseWorkspace && (
+        <WarningMessageBox
+          variant="ghost"
+          size="sm"
+          warning={
+            <span>
+              Will reuse the existing machine from {reuseWorkspace} and NOT create a new one. Go to{" "}
+              <Link as={RouterLink} to={Routes.toProvider(provider?.config?.name!)}>
+                <b>provider settings</b>
+              </Link>{" "}
+              to change this behaviour.
+            </span>
+          }
         />
-      </Tooltip>
-    </Grid>
+      )}
+    </VStack>
   )
 }
 
-import styled from "@emotion/styled"
-import { Plus } from "../../../icons"
-import { NoneSvg, ProviderPlaceholderSvg } from "../../../images"
 type TIDEInputProps = Readonly<{
   ides: readonly TIDE[] | undefined
   field: ControllerRenderProps<TFormValues, (typeof FieldName)["DEFAULT_IDE"]>
@@ -522,9 +541,9 @@ function IDEInput({ ides, field, onClick }: TIDEInputProps) {
     <Grid
       gap={2}
       gridTemplateColumns={{
-        lg: `repeat(6, ${gridChildWidth})`,
-        xl: `repeat(8, ${gridChildWidth})`,
-        "2xl": `repeat(9, ${gridChildWidth})`,
+        lg: `repeat(7, ${gridChildWidth})`,
+        xl: `repeat(9, ${gridChildWidth})`,
+        "2xl": `repeat(10, ${gridChildWidth})`,
       }}>
       {ides?.map((ide) => {
         const isSelected = field.value === ide.name
@@ -534,7 +553,7 @@ function IDEInput({ ides, field, onClick }: TIDEInputProps) {
             <ExampleCard
               name={ide.displayName}
               size="sm"
-              image={ide.icon ?? NoneSvg}
+              image={<IDEIcon ide={ide} />}
               isSelected={isSelected}
               onClick={() => onClick(ide.name!)}
             />
